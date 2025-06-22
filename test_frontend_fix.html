@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .response {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Chat API Connection Test</h1>
+        <p>This test verifies that the frontend can successfully connect to the chat API.</p>
+        
+        <div id="results"></div>
+        
+        <h3>Tests:</h3>
+        <button class="test-button" onclick="testChatHealth()">1. Test Chat Health</button>
+        <button class="test-button" onclick="testApiConnection()">2. Test API Base URL</button>
+        <button class="test-button" onclick="testWithToken()">3. Test with Authentication</button>
+        
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Make sure the backend is running on <code>http://localhost:8000</code></li>
+            <li>Make sure the frontend is running on <code>http://localhost:5173</code></li>
+            <li>Click the test buttons above to verify the connection</li>
+            <li>If tests pass, try the chat page at: <a href="http://localhost:5173/chat" target="_blank">http://localhost:5173/chat</a></li>
+        </ol>
+        
+        <h3>Expected Results:</h3>
+        <ul>
+            <li>✅ Chat Health should return: <code>{"status":"healthy","openai_configured":true}</code></li>
+            <li>✅ API Base URL should show: <code>http://localhost:8000</code></li>
+            <li>✅ Authentication test should work if you have a valid token</li>
+        </ul>
+    </div>
+
+    <script>
+        function addResult(test, success, message, details = '') {
+            const results = document.getElementById('results');
+            const status = success ? 'success' : 'error';
+            const icon = success ? '✅' : '❌';
+            
+            const div = document.createElement('div');
+            div.className = `status ${status}`;
+            div.innerHTML = `${icon} <strong>${test}:</strong> ${message}`;
+            
+            if (details) {
+                const response = document.createElement('div');
+                response.className = 'response';
+                response.textContent = details;
+                div.appendChild(response);
+            }
+            
+            results.appendChild(div);
+        }
+
+        async function testChatHealth() {
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/chat/health');
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'healthy') {
+                    addResult('Chat Health', true, 'Chat API is healthy and OpenAI is configured', JSON.stringify(data, null, 2));
+                } else {
+                    addResult('Chat Health', false, `Unexpected response: ${response.status}`, JSON.stringify(data, null, 2));
+                }
+            } catch (error) {
+                addResult('Chat Health', false, `Connection failed: ${error.message}`, error.toString());
+            }
+        }
+
+        async function testApiConnection() {
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/utils/health-check/');
+                const isHealthy = response.ok;
+                
+                if (isHealthy) {
+                    addResult('API Base URL', true, 'Backend API is accessible at http://localhost:8000', `Response: ${response.status} ${response.statusText}`);
+                } else {
+                    addResult('API Base URL', false, `Backend not responding: ${response.status}`, response.statusText);
+                }
+            } catch (error) {
+                addResult('API Base URL', false, `Cannot reach backend: ${error.message}`, 'Make sure backend is running on port 8000');
+            }
+        }
+
+        async function testWithToken() {
+            try {
+                // First try to get a token
+                const loginResponse = await fetch('http://localhost:8000/api/v1/login/access-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'username=admin@example.com&password=password'
+                });
+
+                if (!loginResponse.ok) {
+                    addResult('Authentication Test', false, 'Cannot login with test credentials', 'Make sure admin@example.com/password user exists');
+                    return;
+                }
+
+                const loginData = await loginResponse.json();
+                const token = loginData.access_token;
+
+                // Now test chat with token
+                const chatResponse = await fetch('http://localhost:8000/api/v1/chat/message', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: 'Test message from browser',
+                        stream: false
+                    })
+                });
+
+                if (chatResponse.ok) {
+                    const chatData = await chatResponse.json();
+                    addResult('Authentication Test', true, 'Chat API works with authentication!', JSON.stringify(chatData, null, 2));
+                } else {
+                    addResult('Authentication Test', false, `Chat API error: ${chatResponse.status}`, await chatResponse.text());
+                }
+
+            } catch (error) {
+                addResult('Authentication Test', false, `Test failed: ${error.message}`, error.toString());
+            }
+        }
+
+        // Auto-run basic tests when page loads
+        window.onload = function() {
+            setTimeout(() => {
+                testChatHealth();
+                testApiConnection();
+            }, 1000);
+        };
+    </script>
+</body>
+</html> 
